@@ -1,39 +1,38 @@
 const express = require("express");
-const googleTTS = require("google-tts-api");
 const cors = require("cors");
-
+const fetch = require("node-fetch");
 const app = express();
-const port = process.env.PORT || 3000;
 
-app.use(cors()); // Permite conexiones desde el frontend
-app.use(express.json());
+app.use(cors());
 
-app.get("/", (req, res) => {
-  res.send("Servidor de texto a voz activo.");
-});
+app.get("/api/audio", async (req, res) => {
+  const text = req.query.text;
+  if (!text) return res.status(400).send("Texto requerido");
 
-app.get("/api/audio", (req, res) => {
-  const texto = req.query.text;
-
-  if (!texto) {
-    return res.status(400).json({ error: "Falta el parámetro 'text'" });
-  }
+  const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(
+    text
+  )}&tl=es&total=1&idx=0&textlen=${text.length}&client=tw-ob&prev=input&ttsspeed=1`;
 
   try {
-    const url = googleTTS.getAudioUrl(texto, {
-      lang: "es",
-      slow: false,
-      host: "https://translate.google.com",
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+      },
     });
 
-    // Redirige directamente al audio
-    res.redirect(url);
+    if (!response.ok) throw new Error("Error al obtener audio");
+
+    const arrayBuffer = await response.arrayBuffer();
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.send(Buffer.from(arrayBuffer));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Error al generar el audio" });
+    res.status(500).send("Error al generar audio");
   }
 });
 
-app.listen(port, () => {
-  console.log(`✅ Servidor corriendo en http://localhost:${port}`);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor escuchando en el puerto ${PORT}`);
 });
