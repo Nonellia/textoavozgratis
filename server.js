@@ -1,30 +1,50 @@
-const express = require("express");
-const axios = require("axios");
-const cors = require("cors");
+const express = require('express');
+const fetch = require('node-fetch');
+const fs = require('fs');
+const path = require('path');
+const gTTS = require('google-tts-api');
+const cors = require('cors');
 
 const app = express();
-app.use(cors());
+const PORT = process.env.PORT || 3000;
 
-app.get("/api/audio", async (req, res) => {
-  const texto = req.query.text;
-  if (!texto) return res.status(400).send("Falta el texto");
+app.use(cors());
+app.use(express.json());
+
+// Servir archivos de audio temporales
+app.use('/audio', express.static('/tmp'));
+
+app.post('/tts', async (req, res) => {
+  const texto = req.body.texto;
+
+  if (!texto) {
+    return res.status(400).send('Texto requerido');
+  }
 
   try {
-    const googleUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=es&q=${encodeURIComponent(texto)}`;
-    const response = await axios.get(googleUrl, { responseType: "stream" });
-
-    // Configura los headers para forzar la descarga
-    res.set({
-      "Content-Type": "audio/mpeg",
-      "Content-Disposition": 'attachment; filename="voz.mp3"',
+    const url = gTTS.getAudioUrl(texto, {
+      lang: 'es',
+      slow: false,
+      host: 'https://translate.google.com',
     });
 
-    response.data.pipe(res); // Stream el audio directamente al cliente
+    const response = await fetch(url);
+    const buffer = await response.buffer();
+
+    const fileName = `voz_${Date.now()}.mp3`;
+    const filePath = path.join('/tmp', fileName);
+
+    fs.writeFileSync(filePath, buffer);
+
+    const publicUrl = `/audio/${fileName}`; // Ruta estática desde Express
+
+    res.json({ url: publicUrl }); // El frontend accede a esto
   } catch (error) {
-    console.error("Error al obtener el audio:", error);
-    res.status(500).send("Error al generar el audio");
+    console.error(error);
+    res.status(500).send('Error al generar el audio');
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor proxy corriendo en ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Servidor en http://localhost:${PORT}`);
+});
