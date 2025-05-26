@@ -1,57 +1,50 @@
 const express = require('express');
-const bodyParser = require('body-parser');
-const googleTTS = require('google-tts-api');
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const fs = require('fs');
 const path = require('path');
-const fetch = require('node-fetch'); // Necesario si usas Node <18
-const { v4: uuidv4 } = require('uuid');
+const gTTS = require('google-tts-api');
+const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(bodyParser.json());
-app.use('/audios', express.static(path.join(__dirname, 'audios')));
+app.use(cors());
+app.use(express.json());
 
-// Ruta principal
-app.get('/', (req, res) => {
-  res.send('Servidor TTS funcionando 🟢');
-});
+// Servir archivos de audio temporales
+app.use('/audio', express.static('/tmp'));
 
-// Ruta para texto a voz
 app.post('/tts', async (req, res) => {
-  try {
-    const { texto, lang = 'es-ES', speed = 1.0 } = req.body;
-    if (!texto || texto.trim() === '') {
-      return res.status(400).json({ error: 'Texto vacío' });
-    }
+  const texto = req.body.texto;
 
-    const url = googleTTS.getAudioUrl(texto, {
-      lang,
+  if (!texto) {
+    return res.status(400).send('Texto requerido');
+  }
+
+  try {
+    const url = gTTS.getAudioUrl(texto, {
+      lang: 'es',
       slow: false,
-      speed: parseFloat(speed),
       host: 'https://translate.google.com',
     });
 
-    const filename = `${uuidv4()}.mp3`;
-    const filepath = path.join(__dirname, 'audios', filename);
-
     const response = await fetch(url);
     const buffer = await response.buffer();
-    fs.writeFileSync(filepath, buffer);
 
-    res.json({ url: `/audios/${filename}` });
-  } catch (err) {
-    console.error(err);
+    const fileName = `voz_${Date.now()}.mp3`;
+    const filePath = path.join('/tmp', fileName);
+
+    fs.writeFileSync(filePath, buffer);
+
+    const publicUrl = `/audio/${fileName}`; // Ruta estática desde Express
+
+    res.json({ url: publicUrl }); // El frontend accede a esto
+  } catch (error) {
+    console.error(error);
     res.status(500).send('Error al generar el audio');
   }
 });
 
-// Crear carpeta audios si no existe
-const audiosDir = path.join(__dirname, 'audios');
-if (!fs.existsSync(audiosDir)) {
-  fs.mkdirSync(audiosDir);
-}
-
 app.listen(PORT, () => {
-  console.log(`Servidor escuchando en http://localhost:${PORT}`);
+  console.log(`Servidor en http://localhost:${PORT}`);
 });
